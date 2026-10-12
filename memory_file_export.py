@@ -4,7 +4,7 @@ import numpy as np
 
 
 def _quantized_words(normalized_samples):
-    """Quantize normalized float samples as 16-bit two's-complement words."""
+    """Quantize float samples as clipped 16-bit two's-complement words."""
     samples = np.asarray(normalized_samples, dtype=np.float64)
     if samples.ndim != 1:
         raise ValueError("Signal samples must be a one-dimensional array.")
@@ -12,8 +12,6 @@ def _quantized_words(normalized_samples):
         raise ValueError("At least one signal sample is required.")
     if not np.all(np.isfinite(samples)):
         raise ValueError("Signal samples must all be finite numbers.")
-    if np.any((samples < -1.0) | (samples > 1.0)):
-        raise ValueError("Signal samples must be normalized to the range [-1.0, 1.0].")
 
     quantized = np.rint(samples * 32767)
     quantized = np.clip(quantized, -32768, 32767).astype(np.int64)
