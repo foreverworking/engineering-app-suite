@@ -34,17 +34,39 @@ def hide_streamlit_footer():
         """
         <style>
         footer {visibility: hidden;}
+        .stMainBlockContainer {
+            padding-top: 1rem;
+            padding-bottom: 1rem;
+            gap: 0.55rem;
+        }
+        .stMainBlockContainer h1 {
+            margin-top: 0;
+            margin-bottom: 0.25rem;
+            padding-bottom: 0;
+        }
         .st-key-settings_summary_bar {
             position: sticky;
-            top: 0.5rem;
+            top: 0.25rem;
             z-index: 1000;
             background-color: var(--background-color);
             box-sizing: border-box;
             width: 96%;
             margin-inline: auto;
-            padding: 0.35rem 0.6rem;
+            padding: 0.15rem 0.5rem;
             border-radius: 0.75rem;
             box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+        }
+        .st-key-settings_summary_bar [data-testid="stVerticalBlock"] {
+            gap: 0.25rem;
+        }
+        .st-key-settings_summary_bar [data-testid="stMarkdownContainer"] p {
+            margin-top: 0;
+            margin-bottom: 0.1rem;
+            line-height: 1.15;
+        }
+        .stMainBlockContainer [data-testid="stMetric"] {
+            padding-top: 0;
+            padding-bottom: 0;
         }
         @media (max-width: 768px) {
             .st-key-settings_summary_bar {
@@ -823,7 +845,7 @@ if graphs_side_by_side:
     time_plot_area, frequency_plot_area = st.columns(2)
 else:
     time_plot_area, frequency_plot_area = st.container(), st.container()
-plot_height = 460 if graphs_side_by_side else 400
+plot_height = 350 if graphs_side_by_side else 380
 plot_title_font_size = 16 if graphs_side_by_side else 20
 plot_axis_font_size = 12 if graphs_side_by_side else 14
 plot_legend_font_size = 10 if graphs_side_by_side else 12
