@@ -826,10 +826,7 @@ with st.container(key="settings_summary_bar", border=True):
     summary_columns = st.columns([1.4, 1.6, 1.1, 1.2, 1.2])
     for index, (label, value) in enumerate(summary_items):
         with summary_columns[index]:
-            if index == 0:
-                st.badge(label, color="blue")
-            else:
-                st.caption(label)
+            st.caption(label)
             st.markdown(f"**{value}**")
 
 sampling_metric, target_snr_metric, calculated_snr_metric = st.columns(3)
