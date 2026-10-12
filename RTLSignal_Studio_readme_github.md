@@ -10,7 +10,7 @@ RTL Signal Studio is an interactive Digital Signal Processing (DSP) dashboard de
 * **BRAM Initialization:** Automatically quantize floating-point signal arrays into 16-bit signed integers and export formatted `.coe` (Xilinx Vivado) and `.mif` (Intel Quartus) files to initialize Block RAM IP cores.
 
 ## ✨ Key Features
-* **Interactive Signal Generator:** Configure standard waveforms (Sine, Square, Sawtooth) or wideband Chirps with configurable sweep ranges, phase, and amplitude.
+* **Interactive Signal Generator:** Configure standard waveforms (Sine, Rectangle/Square, Triangle, Sawtooth) or wideband Chirps with configurable sweep ranges, phase, and amplitude.
 * **Dynamic Digital Front-End:** Apply customizable Butterworth filters (Lowpass, Highpass, Bandpass) with adjustable orders to simulate digital signal conditioning.
 * **Advanced Spectral Analysis:** Visualize Time-Domain and Frequency-Domain (FFT) data with logarithmic (dB) scaling. Compare windowing functions (Rectangular, Hann, Hamming, Blackman, Taylor, Kaiser) to observe sidelobe suppression and spectral leakage mitigation.
 * **Hardware-Ready Export:** 

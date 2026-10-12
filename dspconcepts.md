@@ -37,7 +37,7 @@ While a Butterworth filter just cleans up general noise, a **Matched Filter** is
 
 ## 6. Dashboard Parameters Explained
 * **Sampling Frequency (Hz):** The rate at which the analog signal is digitized (Nyquist theorem dictates it must be $>2x$ the highest frequency).
-* **Signal Type & Frequency:** The core shape (Sine, Square, Chirp) and its oscillation speed.
+* **Signal Type & Frequency:** The core shape (Sine, rectangular/square, triangle, sawtooth, or chirp) and its oscillation speed.
 * **Duration & Phase:** How long the signal lasts and its starting angle.
 * **Noise Profile & SNR:** Injects Gaussian white noise to simulate real-world atmospheric and thermal interference.
 

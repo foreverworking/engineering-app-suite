@@ -177,10 +177,12 @@ def generate_signal(
     
     if sig_type == 'Sine':
         return t, amp * np.sin(omega * t + phase)
-    elif sig_type == 'Square':
+    elif sig_type in {'Rectangle (Square)', 'Square'}:
         return t, amp * signal.square(omega * t + phase)
     elif sig_type == 'Sawtooth':
         return t, amp * signal.sawtooth(omega * t + phase)
+    elif sig_type == 'Triangle':
+        return t, amp * signal.sawtooth(omega * t + phase, width=0.5)
     elif sig_type == 'Chirp':
         return t, amp * signal.chirp(
             t, f0=0, f1=freq, t1=duration, method='linear',
@@ -595,9 +597,19 @@ with st.sidebar.expander("1. Signal and generation", expanded=True) as signal_pa
                 )
                 sig_type = component_panel.selectbox(
                     "Type",
-                    ["Sine", "Square", "Sawtooth", "Chirp", "SAR Chirp"],
+                    [
+                        "Sine",
+                        "Rectangle (Square)",
+                        "Triangle",
+                        "Sawtooth",
+                        "Chirp",
+                        "SAR Chirp",
+                    ],
                     key=f"type_{i}",
-                    help="Chirp sweeps linearly from 0 Hz to the selected frequency.",
+                    help=(
+                        "Choose a periodic waveform or a chirp that sweeps linearly "
+                        "from 0 Hz to the selected end frequency."
+                    ),
                 )
                 frequency_label = (
                     "Sweep end frequency (Hz)"
