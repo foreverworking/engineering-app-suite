@@ -9,6 +9,7 @@ and perform frequency-domain analysis (FFT) interactively.
 
 import io
 import re
+from html import escape
 
 import streamlit as st
 import numpy as np
@@ -51,8 +52,11 @@ def hide_streamlit_footer():
             background-color: var(--background-color);
             box-sizing: border-box;
             width: 96%;
+            min-height: 3rem;
             margin-inline: auto;
             padding: 0.15rem 0.5rem;
+            display: flex;
+            align-items: center;
             border-radius: 0.75rem;
             box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
         }
@@ -63,6 +67,22 @@ def hide_streamlit_footer():
             margin-top: 0;
             margin-bottom: 0.1rem;
             line-height: 1.15;
+        }
+        .settings-summary-item {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            min-height: 2.5rem;
+            line-height: 1.1;
+        }
+        .settings-summary-label {
+            color: var(--text-color);
+            font-size: 0.75rem;
+            opacity: 0.68;
+        }
+        .settings-summary-value {
+            font-size: 0.85rem;
+            overflow-wrap: anywhere;
         }
         .stMainBlockContainer [data-testid="stMetric"] {
             padding-top: 0;
@@ -824,10 +844,15 @@ with st.container(key="settings_summary_bar", border=True):
         ("Filter", filter_summary),
     ]
     summary_columns = st.columns([1.4, 1.6, 1.1, 1.2, 1.2])
-    for index, (label, value) in enumerate(summary_items):
-        with summary_columns[index]:
-            st.caption(label)
-            st.markdown(f"**{value}**")
+    for column, (label, value) in zip(summary_columns, summary_items):
+        with column:
+            st.markdown(
+                '<div class="settings-summary-item">'
+                f'<span class="settings-summary-label">{escape(label)}</span>'
+                f'<strong class="settings-summary-value">{escape(value)}</strong>'
+                "</div>",
+                unsafe_allow_html=True,
+            )
 
 sampling_metric, target_snr_metric, calculated_snr_metric = st.columns(3)
 sampling_metric.metric("Sampling Rate", f"{fs:,} Hz")
