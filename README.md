@@ -1,8 +1,18 @@
-# RTL Signal Studio
+# Engineering App Suite
+
+Welcome to the Engineering App Suite
+
+This repository houses a collection of bespoke software tools designed for aerospace systems, FPGA firmware verification, and digital signal processing (DSP). Built to bridge the gap between high-level system architecture and physical RTL logic design, these applications simulate real-world engineering environments.
+
+## Current applications
+
+- **RTL Signal Studio:** An interactive DSP simulation and datapath verification environment that generates quantized `.coe`, `.mif`, and `.mem` memory files for hardware testbenches.
+
+## RTL Signal Studio
 
 A Streamlit-based DSP dashboard for exploring signal generation, noise injection, digital filtering, and FFT-based frequency analysis.
 
-## Features
+### Features
 
 - Generate sine, square, sawtooth, linear chirp, and SAR chirp signals
 - Apply rectangular, Taylor, or Kaiser pulse tapering to SAR chirps
@@ -28,17 +38,11 @@ A Streamlit-based DSP dashboard for exploring signal generation, noise injection
 - Organize sidebar controls in datapath order: system and sampling, signal generation, channel and noise, digital filter, then spectral analysis
 - Keep signal-path and analysis controls in the sidebar while the main area displays charts and optional live interpretations
 
-## Requirements
+### Requirements
 
-This project uses:
+This project uses Python 3.10+, Streamlit, NumPy, SciPy, Plotly, and Pandas.
 
-- Python 3.10+
-- Streamlit
-- NumPy
-- SciPy
-- Plotly
-
-## Setup
+### Setup
 
 From the project root:
 
@@ -49,13 +53,13 @@ python -m venv venv
 pip install -r requirements.txt
 ```
 
-## Run the app
+### Run the app
 
 ```bash
 streamlit run signal_analysis_dashboard.py
 ```
 
-## Notes
+### Notes
 
 - The dashboard is designed for interactive experimentation in a browser.
 - Both light and dark theme palettes are configured in `.streamlit/config.toml`; open the top-right app menu, choose **Settings**, then select a theme. Theme configuration changes may require restarting the Streamlit server.
