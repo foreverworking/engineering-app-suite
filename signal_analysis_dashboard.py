@@ -70,6 +70,14 @@ def parse_sampling_frequency(value):
     return int(frequency_hz)
 
 
+def format_frequency_hz(value):
+    """Format frequency values with grouped digits instead of scientific notation."""
+    frequency = float(value)
+    if frequency.is_integer():
+        return f"{int(frequency):,}"
+    return f"{frequency:,.6f}".rstrip("0").rstrip(".")
+
+
 @st.cache_data
 def generate_signal(
     sig_type,
@@ -481,7 +489,9 @@ with st.sidebar.expander("1. Signal and generation", expanded=True) as signal_pa
             value=sample_count, step=1, disabled=True,
             help="Calculated from sampling frequency × effective duration.",
         )
-        system_panel.caption(f"Nyquist frequency: {fs / 2:g} Hz")
+        system_panel.caption(
+            f"Nyquist frequency: {format_frequency_hz(fs / 2)} Hz"
+        )
 
     duration = sample_count / fs
     t = np.arange(sample_count) / fs
@@ -733,12 +743,12 @@ with st.container(key="settings_summary_bar", border=True):
         component["type"] for component in active_signal_settings
     ) or "None"
     sweep_summary = " · ".join(
-        f"{component['type']} 0 to {component['frequency']:g} Hz"
+        f"{component['type']} 0 to {format_frequency_hz(component['frequency'])} Hz"
         for component in active_signal_settings
         if component["type"] in {"Chirp", "SAR Chirp"}
     ) or "None"
     cutoff_summary = (
-        " / ".join(f"{value:g} Hz" for value in cutoff)
+        " / ".join(f"{format_frequency_hz(value)} Hz" for value in cutoff)
         if filter_enabled else "—"
     )
     noise_summary = (
@@ -890,6 +900,7 @@ fig_freq.update_layout(
     xaxis=dict(
         tickfont=dict(size=plot_axis_font_size),
         title_font=dict(size=plot_axis_font_size),
+        tickformat=",d",
     ),
     yaxis=dict(
         tickfont=dict(size=plot_axis_font_size),
@@ -926,7 +937,7 @@ if show_interpretations:
         st.write(
             f"The plot shows {len(active_components)} active signal component(s) "
             f"({', '.join(active_components) if active_components else 'none'}), "
-            f"sampled at {fs:g} Hz for {duration:g} seconds "
+            f"sampled at {format_frequency_hz(fs)} Hz for {duration:g} seconds "
             f"({len(t):,} samples)."
         )
         st.write(
@@ -945,14 +956,30 @@ if show_interpretations:
         else:
             st.write("Noise is disabled, so the noisy input matches the clean signal.")
         if filter_enabled:
+            cutoff_text = (
+                f"a cutoff frequency of {format_frequency_hz(cutoff[0])} Hz"
+                if len(cutoff) == 1
+                else (
+                    "cutoff frequencies of "
+                    f"{format_frequency_hz(cutoff[0])} Hz and "
+                    f"{format_frequency_hz(cutoff[1])} Hz"
+                )
+            )
             st.write(
-                f"A {filter_type.lower()} Butterworth filter (order {order}) is applied "
-                "to the input before the final trace is plotted."
+                f"A {filter_type.lower()} Butterworth filter (order {order}) with "
+                f"{cutoff_text} is applied to the input before the final trace is plotted."
             )
         else:
             st.write("Filtering is disabled, so the final trace is the input signal.")
 
     with st.expander("Interpret the frequency-domain plot", expanded=True):
+        for component in active_signal_settings:
+            if component["type"] in {"Chirp", "SAR Chirp"}:
+                bandwidth = format_frequency_hz(component["frequency"])
+                st.write(
+                    f"The {component['type']} occupies a {bandwidth} Hz bandwidth, "
+                    f"sweeping from 0 to {bandwidth} Hz."
+                )
         if clean_peak is None:
             st.write("The clean spectrum has no measurable non-DC frequency peak.")
         else:
@@ -1115,9 +1142,9 @@ with st.container(border=True):
         "Not applied"
         if filter_type == "None"
         else (
-            f"{cutoff[0]:g}–{cutoff[1]:g} Hz"
+            f"{format_frequency_hz(cutoff[0])}–{format_frequency_hz(cutoff[1])} Hz"
             if len(cutoff) == 2
-            else f"{cutoff[0]:g} Hz"
+            else f"{format_frequency_hz(cutoff[0])} Hz"
         )
     )
     report_export = analysis_report_markdown(
