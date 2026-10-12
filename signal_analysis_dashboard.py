@@ -34,6 +34,15 @@ def hide_streamlit_footer():
         """
         <style>
         footer {visibility: hidden;}
+        .st-key-settings_summary_bar {
+            position: sticky;
+            top: 0.5rem;
+            z-index: 1000;
+            background-color: var(--background-color);
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -452,8 +461,11 @@ with st.sidebar.expander("1. Signal and generation", expanded=True) as signal_pa
             )
         system_panel.caption(f"Converted value: {fs:,} Hz")
         duration_requested = sidebar_parameter(
-            "Record duration (seconds)", 0.1, 5.0, 1.0, 0.1, "signal_duration",
-            help_text="Total signal duration used for waveform generation and frequency analysis.",
+            "Record duration (seconds)", 0.0, 5.0, 1.0, 0.1, "signal_duration",
+            help_text=(
+                "Set the recording duration from 0 to 5 seconds. At 0 seconds, "
+                "the analysis retains the minimum two samples required for DSP."
+            ),
             container=system_panel,
         )
         max_signal_samples = 1_000_000
@@ -475,7 +487,7 @@ with st.sidebar.expander("1. Signal and generation", expanded=True) as signal_pa
     t = np.arange(sample_count) / fs
     combined_signal = np.zeros(sample_count)
     active_components = []
-    active_frequencies = []
+    component_settings = []
 
     with signal_panel.expander("Signal generation", expanded=True) as generation_panel:
         generation_panel.caption("Choose the signal components to combine.")
@@ -550,6 +562,17 @@ with st.sidebar.expander("1. Signal and generation", expanded=True) as signal_pa
                             container=component_panel,
                         )
 
+                component_settings.append({
+                    "enabled": enabled,
+                    "type": sig_type,
+                    "frequency": freq,
+                    "amplitude": amp,
+                    "phase": phase,
+                    "chirp_window": chirp_window,
+                    "taylor_nbar": chirp_taylor_nbar,
+                    "taylor_sll": chirp_taylor_sll,
+                    "kaiser_beta": chirp_kaiser_beta,
+                })
                 if enabled:
                     _, signal_component = generate_signal(
                         sig_type, freq, amp, duration, fs, phase, chirp_window,
@@ -557,7 +580,6 @@ with st.sidebar.expander("1. Signal and generation", expanded=True) as signal_pa
                     )
                     combined_signal += signal_component
                     active_components.append(sig_type)
-                    active_frequencies.append(freq)
 
 with st.sidebar.expander("3. Channel and noise", expanded=False) as channel_panel:
     noise_type = channel_panel.selectbox(
@@ -649,10 +671,48 @@ with st.sidebar.expander("5. Spectral analysis", expanded=False) as spectral_pan
         "Spectrum scale", ["Linear Magnitude", "Logarithmic (dB)"],
         help="Choose linear FFT magnitude or logarithmic decibel scale.",
     )
+    nyquist_frequency = int(fs / 2)
+    fft_x_max_default = min(10_000, nyquist_frequency)
+    st.session_state.setdefault("fft_x_axis_min", 0)
+    st.session_state.setdefault("fft_x_axis_max", fft_x_max_default)
+    st.session_state["fft_x_axis_min"] = min(
+        max(int(st.session_state["fft_x_axis_min"]), 0),
+        nyquist_frequency - 1,
+    )
+    st.session_state["fft_x_axis_max"] = min(
+        max(
+            int(st.session_state["fft_x_axis_max"]),
+            st.session_state["fft_x_axis_min"] + 1,
+        ),
+        nyquist_frequency,
+    )
+    fft_min_column, fft_max_column = spectral_panel.columns(2)
+    fft_x_min = int(fft_min_column.number_input(
+        "FFT X-Axis Min (Hz)",
+        min_value=0,
+        max_value=nyquist_frequency - 1,
+        step=1000,
+        key="fft_x_axis_min",
+        help="Set the lower frequency bound for the displayed spectrum.",
+    ))
+    fft_x_max = int(fft_max_column.number_input(
+        "FFT X-Axis Max (Hz)",
+        min_value=fft_x_min + 1,
+        max_value=nyquist_frequency,
+        step=1000,
+        key="fft_x_axis_max",
+        help="Set the upper frequency bound for the displayed spectrum, up to Nyquist.",
+    ))
 
 with st.sidebar.expander("Visualization Settings", expanded=False):
     show_interpretations = st.checkbox(
         "Show live graph interpretations", value=True, key="show_interpretations"
+    )
+    graphs_side_by_side = st.checkbox(
+        "Show time and frequency graphs side by side",
+        value=False,
+        key="graphs_side_by_side",
+        help="Compare the time-domain and frequency-domain plots in two columns.",
     )
     clean_color = st.color_picker(
         "Clean Signal Color", value="#00FF00", key="visual_clean_signal_color"
@@ -665,6 +725,44 @@ with st.sidebar.expander("Visualization Settings", expanded=False):
     )
 
 st.title("RTL Signal Studio")
+with st.container(key="settings_summary_bar", border=True):
+    active_signal_settings = [
+        component for component in component_settings if component["enabled"]
+    ]
+    signal_summary = " + ".join(
+        component["type"] for component in active_signal_settings
+    ) or "None"
+    sweep_summary = " · ".join(
+        f"{component['type']} 0 to {component['frequency']:g} Hz"
+        for component in active_signal_settings
+        if component["type"] in {"Chirp", "SAR Chirp"}
+    ) or "None"
+    cutoff_summary = (
+        " / ".join(f"{value:g} Hz" for value in cutoff)
+        if filter_enabled else "—"
+    )
+    noise_summary = (
+        f"{noise_type} · {snr_db:g} dB" if noise_enabled else "Off"
+    )
+    filter_summary = (
+        f"{filter_type} · order {order}" if filter_enabled else "Off"
+    )
+    summary_items = [
+        ("Signal", signal_summary),
+        ("Sweep Signal", sweep_summary),
+        ("Cutoff", cutoff_summary),
+        ("Noise", noise_summary),
+        ("Filter", filter_summary),
+    ]
+    summary_columns = st.columns([1.4, 1.6, 1.1, 1.2, 1.2])
+    for index, (label, value) in enumerate(summary_items):
+        with summary_columns[index]:
+            if index == 0:
+                st.badge(label, color="blue")
+            else:
+                st.caption(label)
+            st.markdown(f"**{value}**")
+
 sampling_metric, target_snr_metric, calculated_snr_metric = st.columns(3)
 sampling_metric.metric("Sampling Rate", f"{fs:,} Hz")
 target_snr_metric.metric(
@@ -674,47 +772,68 @@ target_snr_metric.metric(
 calculated_snr_metric.metric("Calculated SNR", format_snr(output_snr))
 
 # --- Plotting ---
+if graphs_side_by_side:
+    time_plot_area, frequency_plot_area = st.columns(2)
+else:
+    time_plot_area, frequency_plot_area = st.container(), st.container()
+plot_height = 460 if graphs_side_by_side else 400
+plot_title_font_size = 16 if graphs_side_by_side else 20
+plot_axis_font_size = 12 if graphs_side_by_side else 14
+plot_legend_font_size = 10 if graphs_side_by_side else 12
 
 # Plot 1: Time Domain
 fig_time = make_subplots(rows=1, cols=1)
 
-# Show up to five periods of the highest active component so fast waveforms
-# remain visually distinguishable instead of being compressed into the full record.
-if active_frequencies:
-    highest_signal_frequency = max(active_frequencies)
-    plot_view_duration = min(duration, 5 / highest_signal_frequency)
-else:
-    plot_view_duration = duration
-
-plot_view_count = max(2, min(sample_count, int(np.ceil(plot_view_duration * fs))))
+# Always show the full record; downsample only when needed to keep rendering responsive.
 max_plot_points = 5000
-plot_step = max(1, int(np.ceil(plot_view_count / max_plot_points)))
-plot_indices = np.arange(0, plot_view_count, plot_step)
+plot_step = max(1, int(np.ceil(sample_count / max_plot_points)))
+plot_indices = np.arange(0, sample_count, plot_step)
 
 fig_time.add_trace(go.Scatter(x=t[plot_indices], y=combined_signal[plot_indices],
-                              mode='lines', name='Original Clean Signal',
+                              mode='lines',
+                              name='Clean' if graphs_side_by_side else 'Original Clean Signal',
                               line=dict(color=clean_color, width=1, dash='dash')))
 
 if noise_type != 'None':
     fig_time.add_trace(go.Scatter(x=t[plot_indices], y=noisy_signal[plot_indices],
-                                  mode='lines', name='Noisy Signal',
+                                  mode='lines',
+                                  name='Noisy' if graphs_side_by_side else 'Noisy Signal',
                                   line=dict(color=noisy_color, width=1)))
 
 fig_time.add_trace(go.Scatter(x=t[plot_indices], y=filtered_signal[plot_indices],
-                              mode='lines', name='Final (Filtered) Signal',
+                              mode='lines',
+                              name='Filtered' if graphs_side_by_side else 'Final (Filtered) Signal',
                               line=dict(color=filtered_color, width=2)))
 
 fig_time.update_layout(
-    title="Time Domain Representation",
+    title=dict(
+        text="Time Domain" if graphs_side_by_side else "Time Domain Representation",
+        font=dict(size=plot_title_font_size),
+    ),
     xaxis_title="Time (seconds)",
     yaxis_title="Amplitude",
-    xaxis=dict(range=[0, t[plot_indices[-1]]]),
-    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+    xaxis=dict(
+        range=[0, duration],
+        tickfont=dict(size=plot_axis_font_size),
+        title_font=dict(size=plot_axis_font_size),
+    ),
+    yaxis=dict(
+        tickfont=dict(size=plot_axis_font_size),
+        title_font=dict(size=plot_axis_font_size),
+    ),
+    legend=dict(
+        orientation="h",
+        yanchor="bottom",
+        y=1.02,
+        xanchor="right",
+        x=1,
+        font=dict(size=plot_legend_font_size),
+    ),
     margin=dict(l=40, r=40, t=40, b=40),
-    height=400,
+    height=plot_height,
     hovermode="x unified"
 )
-st.plotly_chart(
+time_plot_area.plotly_chart(
     fig_time,
     width="stretch",
     config=interactive_plot_config("time-domain-signal"),
@@ -722,10 +841,88 @@ st.plotly_chart(
     alt="Clean, noisy, and filtered signal waveforms over time",
 )
 
+# Plot 2: Frequency Domain (FFT)
+
+xf, mag_clean, db_clean = compute_fft(
+    combined_signal, fs, window_type, taylor_nbar, taylor_sll, kaiser_beta
+)
+_, mag_filt, db_filt = compute_fft(
+    filtered_signal, fs, window_type, taylor_nbar, taylor_sll, kaiser_beta
+)
+
+fig_freq = go.Figure()
+
+if plot_type == 'Linear Magnitude':
+    y_clean, y_filt, y_title = mag_clean, mag_filt, "Magnitude"
+else:
+    y_clean, y_filt, y_title = db_clean, db_filt, "Magnitude (dB)"
+
+fig_freq.add_trace(go.Scatter(x=xf, y=y_clean, mode='lines', 
+                              name='Clean Spectrum' if graphs_side_by_side else 'Original Clean Spectrum',
+                              line=dict(color=clean_color, width=1)))
+                              
+fig_freq.add_trace(go.Scatter(x=xf, y=y_filt, mode='lines', 
+                              name='Filtered Spectrum' if graphs_side_by_side else 'Final (Filtered) Spectrum',
+                              line=dict(color=filtered_color, width=2)))
+
+# Add shading to indicate filter bands
+if filter_type != 'None':
+    shapes = []
+    nyq = fs / 2
+    if filter_type == 'Lowpass':
+        shapes.append(dict(type="rect", x0=0, x1=cutoff[0], y0=0, y1=1, yref="paper",
+                           fillcolor="rgba(0, 188, 212, 0.1)", layer="below", line_width=0))
+    elif filter_type == 'Highpass':
+        shapes.append(dict(type="rect", x0=cutoff[0], x1=nyq, y0=0, y1=1, yref="paper",
+                           fillcolor="rgba(0, 188, 212, 0.1)", layer="below", line_width=0))
+    elif filter_type == 'Bandpass':
+        shapes.append(dict(type="rect", x0=cutoff[0], x1=cutoff[1], y0=0, y1=1, yref="paper",
+                           fillcolor="rgba(0, 188, 212, 0.1)", layer="below", line_width=0))
+    fig_freq.update_layout(shapes=shapes)
+
+fig_freq.update_layout(
+    title=dict(
+        text="Frequency Domain" if graphs_side_by_side else "Frequency Domain (Spectrum)",
+        font=dict(size=plot_title_font_size),
+    ),
+    xaxis_title="Frequency (Hz)",
+    yaxis_title=y_title,
+    xaxis=dict(
+        tickfont=dict(size=plot_axis_font_size),
+        title_font=dict(size=plot_axis_font_size),
+    ),
+    yaxis=dict(
+        tickfont=dict(size=plot_axis_font_size),
+        title_font=dict(size=plot_axis_font_size),
+    ),
+    legend=dict(
+        orientation="h",
+        yanchor="bottom",
+        y=1.02,
+        xanchor="right",
+        x=1,
+        font=dict(size=plot_legend_font_size),
+    ),
+    margin=dict(l=40, r=40, t=40, b=40),
+    height=plot_height,
+    hovermode="x unified"
+)
+fig_freq.update_xaxes(range=[fft_x_min, fft_x_max])
+frequency_plot_area.plotly_chart(
+    fig_freq,
+    width="stretch",
+    config=interactive_plot_config("frequency-spectrum"),
+    key="frequency_spectrum_plot",
+    alt="Clean and filtered signal magnitude across frequency",
+)
+
 if show_interpretations:
+    peak_to_peak = float(np.ptp(combined_signal))
+    rms_amplitude = float(np.sqrt(np.mean(combined_signal**2)))
+    clean_peak = dominant_frequency(xf, mag_clean)
+    filtered_peak = dominant_frequency(xf, mag_filt)
+    frequency_resolution = fs / len(combined_signal)
     with st.expander("Interpret the time-domain plot", expanded=True):
-        peak_to_peak = float(np.ptp(combined_signal))
-        rms_amplitude = float(np.sqrt(np.mean(combined_signal**2)))
         st.write(
             f"The plot shows {len(active_components)} active signal component(s) "
             f"({', '.join(active_components) if active_components else 'none'}), "
@@ -733,8 +930,8 @@ if show_interpretations:
             f"({len(t):,} samples)."
         )
         st.write(
-            f"The time plot is zoomed to the first {plot_view_duration:.4g} seconds "
-            f"({len(plot_indices):,} plotted points) to make waveform shape visible."
+            f"The time plot shows the full {duration:.4g}-second recording "
+            f"({len(plot_indices):,} plotted points)."
         )
         st.write(
             f"The clean signal has a peak-to-peak amplitude of {peak_to_peak:.3g} "
@@ -755,66 +952,6 @@ if show_interpretations:
         else:
             st.write("Filtering is disabled, so the final trace is the input signal.")
 
-# Plot 2: Frequency Domain (FFT)
-
-xf, mag_clean, db_clean = compute_fft(
-    combined_signal, fs, window_type, taylor_nbar, taylor_sll, kaiser_beta
-)
-_, mag_filt, db_filt = compute_fft(
-    filtered_signal, fs, window_type, taylor_nbar, taylor_sll, kaiser_beta
-)
-
-fig_freq = go.Figure()
-
-if plot_type == 'Linear Magnitude':
-    y_clean, y_filt, y_title = mag_clean, mag_filt, "Magnitude"
-else:
-    y_clean, y_filt, y_title = db_clean, db_filt, "Magnitude (dB)"
-
-fig_freq.add_trace(go.Scatter(x=xf, y=y_clean, mode='lines', 
-                              name='Original Clean Spectrum',
-                              line=dict(color=clean_color, width=1)))
-                              
-fig_freq.add_trace(go.Scatter(x=xf, y=y_filt, mode='lines', 
-                              name='Final (Filtered) Spectrum',
-                              line=dict(color=filtered_color, width=2)))
-
-# Add shading to indicate filter bands
-if filter_type != 'None':
-    shapes = []
-    nyq = fs / 2
-    if filter_type == 'Lowpass':
-        shapes.append(dict(type="rect", x0=0, x1=cutoff[0], y0=0, y1=1, yref="paper",
-                           fillcolor="rgba(0, 188, 212, 0.1)", layer="below", line_width=0))
-    elif filter_type == 'Highpass':
-        shapes.append(dict(type="rect", x0=cutoff[0], x1=nyq, y0=0, y1=1, yref="paper",
-                           fillcolor="rgba(0, 188, 212, 0.1)", layer="below", line_width=0))
-    elif filter_type == 'Bandpass':
-        shapes.append(dict(type="rect", x0=cutoff[0], x1=cutoff[1], y0=0, y1=1, yref="paper",
-                           fillcolor="rgba(0, 188, 212, 0.1)", layer="below", line_width=0))
-    fig_freq.update_layout(shapes=shapes)
-
-fig_freq.update_layout(
-    title="Frequency Domain (Spectrum)",
-    xaxis_title="Frequency (Hz)",
-    yaxis_title=y_title,
-    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-    margin=dict(l=40, r=40, t=40, b=40),
-    height=400,
-    hovermode="x unified"
-)
-st.plotly_chart(
-    fig_freq,
-    width="stretch",
-    config=interactive_plot_config("frequency-spectrum"),
-    key="frequency_spectrum_plot",
-    alt="Clean and filtered signal magnitude across frequency",
-)
-
-if show_interpretations:
-    clean_peak = dominant_frequency(xf, mag_clean)
-    filtered_peak = dominant_frequency(xf, mag_filt)
-    frequency_resolution = fs / len(combined_signal)
     with st.expander("Interpret the frequency-domain plot", expanded=True):
         if clean_peak is None:
             st.write("The clean spectrum has no measurable non-DC frequency peak.")
