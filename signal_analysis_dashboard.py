@@ -39,11 +39,48 @@ def hide_streamlit_footer():
             top: 0.5rem;
             z-index: 1000;
             background-color: var(--background-color);
-            padding: 0.5rem 0.75rem;
+            box-sizing: border-box;
+            width: 96%;
+            margin-inline: auto;
+            padding: 0.35rem 0.6rem;
             border-radius: 0.75rem;
             box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
         }
+        @media (max-width: 768px) {
+            .st-key-settings_summary_bar {
+                width: 100%;
+            }
+        }
+        .copyright-watermarks {
+            position: fixed;
+            inset: 0;
+            z-index: 10000;
+            pointer-events: none;
+        }
+        .copyright-watermarks span {
+            position: absolute;
+            padding: 0.2rem 0.4rem;
+            border: 1px solid rgba(128, 128, 128, 0.35);
+            border-radius: 0.35rem;
+            background: var(--background-color);
+            color: var(--text-color);
+            font-size: 0.7rem;
+            font-weight: 600;
+            line-height: 1.2;
+            opacity: 0.8;
+            white-space: nowrap;
+        }
+        .copyright-top-left { top: 0.35rem; left: 0.35rem; }
+        .copyright-top-right { top: 0.35rem; right: 0.35rem; }
+        .copyright-bottom-left { bottom: 0.35rem; left: 0.35rem; }
+        .copyright-bottom-right { bottom: 0.35rem; right: 0.35rem; }
         </style>
+        <div class="copyright-watermarks" aria-hidden="true">
+            <span class="copyright-top-left">© Fatima Sadiq</span>
+            <span class="copyright-top-right">© Fatima Sadiq</span>
+            <span class="copyright-bottom-left">© Fatima Sadiq</span>
+            <span class="copyright-bottom-right">© Fatima Sadiq</span>
+        </div>
         """,
         unsafe_allow_html=True,
     )
