@@ -16,7 +16,8 @@ A Streamlit-based DSP dashboard for exploring signal generation, noise injection
 
 - Generate sine, square, sawtooth, linear chirp, and SAR chirp signals
 - Apply rectangular, Taylor, or Kaiser pulse tapering to SAR chirps
-- Configure the sampling frequency, duration, and sample count in the sidebar
+- Configure the sampling frequency from 100 Hz to 1 GHz using Hz, kHz, MHz, or GHz input (for example, `250M` or `1G`); the dashboard converts the entry to Hz
+- Configure the recording duration and sample count in the sidebar, with generation capped at one million samples
 - Combine up to three independently enabled signal components, each with adjustable type, frequency, amplitude, and phase
 - Add Gaussian or uniform white noise at a target SNR, or bypass noise
 - Apply lowpass, highpass, bandpass, or bandstop Butterworth filters, or bypass filtering
@@ -35,7 +36,7 @@ A Streamlit-based DSP dashboard for exploring signal generation, noise injection
 - Compare clean vs. filtered signal spectra
 - Compare input and output SNR in a dedicated chart
 - Show live interpretations below each graph, including time-domain levels, dominant spectrum peaks, and SNR change (enabled by default)
-- Organize sidebar controls in datapath order: system and sampling, signal generation, channel and noise, digital filter, then spectral analysis
+- Group system/sampling and signal generation inside a collapsible "Signal and generation" sidebar section, with nested dropdowns for each component; keep channel/noise, digital filter, and spectral analysis in subsequent datapath-order sections
 - Keep signal-path and analysis controls in the sidebar while the main area displays charts and optional live interpretations
 
 ### Requirements

@@ -8,6 +8,7 @@ and perform frequency-domain analysis (FFT) interactively.
 """
 
 import io
+import re
 
 import streamlit as st
 import numpy as np
@@ -43,6 +44,23 @@ hide_streamlit_footer()
 
 
 # --- DSP Helper Functions ---
+def parse_sampling_frequency(value):
+    """Convert a frequency string with optional SI suffixes to integer Hz."""
+    match = re.fullmatch(
+        r"\s*(\d+(?:\.\d*)?|\.\d+)\s*([KMG]?)\s*(?:HZ)?\s*",
+        value,
+        flags=re.IGNORECASE,
+    )
+    if match is None:
+        raise ValueError("Enter a frequency such as 1000, 250M, or 1G.")
+
+    multiplier = {"": 1, "K": 1_000, "M": 1_000_000, "G": 1_000_000_000}
+    frequency_hz = float(match.group(1)) * multiplier[match.group(2).upper()]
+    if not np.isfinite(frequency_hz) or not frequency_hz.is_integer():
+        raise ValueError("The converted sampling frequency must be a whole number of Hz.")
+    return int(frequency_hz)
+
+
 @st.cache_data
 def generate_signal(
     sig_type,
@@ -405,117 +423,141 @@ st.sidebar.title("Signal controls", icon=":material/tune:")
 st.sidebar.caption("Follow the signal path from sampling to spectral analysis.")
 st.sidebar.caption("Change light/dark mode from the app menu: Settings → Theme.")
 
-with st.sidebar.expander("1. System and sampling", expanded=True) as system_panel:
-    fs = int(sidebar_parameter(
-        "Sampling frequency (Hz)", 100, 10000, 1000, 100, "sampling_frequency",
-        help_text="Sampling rate of the generated signal. Keep it comfortably above twice the highest signal frequency.",
-        container=system_panel,
-    ))
-    duration_requested = sidebar_parameter(
-        "Record duration (seconds)", 0.1, 5.0, 1.0, 0.1, "signal_duration",
-        help_text="Total signal duration used for waveform generation and frequency analysis.",
-        container=system_panel,
-    )
-    max_signal_samples = 1_000_000
-    sample_count = max(2, int(round(fs * duration_requested)))
-    if sample_count > max_signal_samples:
-        sample_count = max_signal_samples
-        system_panel.warning(
-            f"Duration limited to {sample_count / fs:.3g} seconds to keep analysis "
-            f"within {max_signal_samples:,} samples."
+with st.sidebar.expander("1. Signal and generation", expanded=True) as signal_panel:
+    with signal_panel.expander("System and sampling", expanded=True) as system_panel:
+        sampling_frequency_text = system_panel.text_input(
+            "Sampling frequency",
+            value="1 kHz",
+            key="sampling_frequency_input",
+            help=(
+                "Enter Hz directly or use k/K for kHz, M for MHz, or G for GHz. "
+                "Supported range: 100 Hz to 1 GHz."
+            ),
+            placeholder="e.g. 1000, 250M, 1G",
         )
-    system_panel.number_input(
-        "Number of samples", min_value=2, max_value=max_signal_samples,
-        value=sample_count, step=1, disabled=True,
-        help="Calculated from sampling frequency × effective duration.",
-    )
-    system_panel.caption(f"Nyquist frequency: {fs / 2:g} Hz")
-
-duration = sample_count / fs
-t = np.arange(sample_count) / fs
-combined_signal = np.zeros(sample_count)
-active_components = []
-active_frequencies = []
-
-st.sidebar.header("2. Signal generation", divider=False)
-st.sidebar.caption("Choose the signal components to combine.")
-num_signals = int(st.sidebar.number_input(
-    "Number of signal components", min_value=1, max_value=3, value=2,
-    help="Choose how many independently configured components to combine.",
-))
-
-for i in range(num_signals):
-    component_panel = st.sidebar.expander(
-        f"Component {i + 1}", expanded=(i == 0)
-    )
-    with component_panel:
-        enabled = component_panel.checkbox(
-            "Include in combined signal", value=True, key=f"component_enabled_{i}"
+        last_valid_fs = int(
+            st.session_state.get("sampling_frequency_last_valid_hz", 1000)
         )
-        sig_type = component_panel.selectbox(
-            "Type",
-            ["Sine", "Square", "Sawtooth", "Chirp", "SAR Chirp"],
-            key=f"type_{i}",
-            help="Chirp sweeps linearly from 0 Hz to the selected frequency.",
-        )
-        frequency_label = (
-            "Sweep end frequency (Hz)"
-            if sig_type in ["Chirp", "SAR Chirp"] else "Frequency (Hz)"
-        )
-        freq = sidebar_parameter(
-            frequency_label, 1.0, fs / 2 - 1, (i + 1) * 5.0, 1.0,
-            f"freq_{i}", disabled=not enabled,
-            help_text="Tone frequency for periodic signals, or final sweep frequency for a chirp.",
-            container=component_panel,
-        )
-        amp = sidebar_parameter(
-            "Amplitude", 0.1, 10.0, 1.0, 0.1, f"amp_{i}",
-            disabled=not enabled, help_text="Peak amplitude of this component.",
-            container=component_panel,
-        )
-        phase = sidebar_parameter(
-            "Phase (rad)", 0.0, 2 * np.pi, 0.0, 0.1, f"phase_{i}",
-            disabled=not enabled, help_text="Initial phase offset in radians.",
-            container=component_panel,
-        )
-
-        chirp_window = "Rectangular"
-        chirp_taylor_nbar = 4
-        chirp_taylor_sll = 30
-        chirp_kaiser_beta = 8.6
-        if sig_type == "SAR Chirp":
-            chirp_window = component_panel.selectbox(
-                "SAR chirp pulse window",
-                ["Rectangular", "Taylor", "Kaiser"],
-                key=f"sar_chirp_window_{i}",
-                disabled=not enabled,
-                help="Optional time-domain taper applied to this SAR chirp pulse.",
+        try:
+            fs = parse_sampling_frequency(sampling_frequency_text)
+            if not 100 <= fs <= 1_000_000_000:
+                raise ValueError(
+                    "Sampling frequency must be between 100 Hz and 1 GHz."
+                )
+            st.session_state["sampling_frequency_last_valid_hz"] = fs
+        except ValueError as error:
+            fs = last_valid_fs
+            system_panel.error(
+                f"{error} Using the last valid value: {fs:,} Hz."
             )
-            if chirp_window == "Taylor":
-                chirp_taylor_nbar = int(sidebar_parameter(
-                    "Taylor nbar", 2, 10, 4, 1, f"sar_taylor_nbar_{i}",
-                    disabled=not enabled, container=component_panel,
-                ))
-                chirp_taylor_sll = int(sidebar_parameter(
-                    "Taylor sidelobe level (dB)", 20, 100, 30, 1,
-                    f"sar_taylor_sll_{i}", disabled=not enabled,
+        system_panel.caption(f"Converted value: {fs:,} Hz")
+        duration_requested = sidebar_parameter(
+            "Record duration (seconds)", 0.1, 5.0, 1.0, 0.1, "signal_duration",
+            help_text="Total signal duration used for waveform generation and frequency analysis.",
+            container=system_panel,
+        )
+        max_signal_samples = 1_000_000
+        sample_count = max(2, int(round(fs * duration_requested)))
+        if sample_count > max_signal_samples:
+            sample_count = max_signal_samples
+            system_panel.warning(
+                f"Duration limited to {sample_count / fs:.3g} seconds to keep analysis "
+                f"within {max_signal_samples:,} samples."
+            )
+        system_panel.number_input(
+            "Number of samples", min_value=2, max_value=max_signal_samples,
+            value=sample_count, step=1, disabled=True,
+            help="Calculated from sampling frequency × effective duration.",
+        )
+        system_panel.caption(f"Nyquist frequency: {fs / 2:g} Hz")
+
+    duration = sample_count / fs
+    t = np.arange(sample_count) / fs
+    combined_signal = np.zeros(sample_count)
+    active_components = []
+    active_frequencies = []
+
+    with signal_panel.expander("Signal generation", expanded=True) as generation_panel:
+        generation_panel.caption("Choose the signal components to combine.")
+        num_signals = int(generation_panel.number_input(
+            "Number of signal components", min_value=1, max_value=3, value=2,
+            help="Choose how many independently configured components to combine.",
+        ))
+
+        for i in range(num_signals):
+            component_panel = generation_panel.expander(
+                f"Component {i + 1}", expanded=(i == 0)
+            )
+            with component_panel:
+                enabled = component_panel.checkbox(
+                    "Include in combined signal", value=True, key=f"component_enabled_{i}"
+                )
+                sig_type = component_panel.selectbox(
+                    "Type",
+                    ["Sine", "Square", "Sawtooth", "Chirp", "SAR Chirp"],
+                    key=f"type_{i}",
+                    help="Chirp sweeps linearly from 0 Hz to the selected frequency.",
+                )
+                frequency_label = (
+                    "Sweep end frequency (Hz)"
+                    if sig_type in ["Chirp", "SAR Chirp"] else "Frequency (Hz)"
+                )
+                freq = sidebar_parameter(
+                    frequency_label, 1.0, fs / 2 - 1, (i + 1) * 5.0, 1.0,
+                    f"freq_{i}", disabled=not enabled,
+                    help_text="Tone frequency for periodic signals, or final sweep frequency for a chirp.",
                     container=component_panel,
-                ))
-            elif chirp_window == "Kaiser":
-                chirp_kaiser_beta = sidebar_parameter(
-                    "Kaiser beta", 0.0, 20.0, 8.6, 0.1,
-                    f"sar_kaiser_beta_{i}", disabled=not enabled,
+                )
+                amp = sidebar_parameter(
+                    "Amplitude", 0.1, 10.0, 1.0, 0.1, f"amp_{i}",
+                    disabled=not enabled, help_text="Peak amplitude of this component.",
+                    container=component_panel,
+                )
+                phase = sidebar_parameter(
+                    "Phase (rad)", 0.0, 2 * np.pi, 0.0, 0.1,
+                    f"phase_{i}", disabled=not enabled,
+                    help_text="Initial phase offset in radians.",
                     container=component_panel,
                 )
 
-        if enabled:
-            _, signal_component = generate_signal(
-                sig_type, freq, amp, duration, fs, phase, chirp_window,
-                chirp_taylor_nbar, chirp_taylor_sll, chirp_kaiser_beta,
-            )
-            combined_signal += signal_component
-            active_components.append(sig_type)
-            active_frequencies.append(freq)
+                chirp_window = "Rectangular"
+                chirp_taylor_nbar = 4
+                chirp_taylor_sll = 30
+                chirp_kaiser_beta = 8.6
+                if sig_type == "SAR Chirp":
+                    chirp_window = component_panel.selectbox(
+                        "SAR chirp pulse window",
+                        ["Rectangular", "Taylor", "Kaiser"],
+                        key=f"sar_chirp_window_{i}",
+                        disabled=not enabled,
+                        help="Optional time-domain taper applied to this SAR chirp pulse.",
+                    )
+                    if chirp_window == "Taylor":
+                        chirp_taylor_nbar = int(sidebar_parameter(
+                            "Taylor nbar", 2, 10, 4, 1,
+                            f"sar_taylor_nbar_{i}",
+                            disabled=not enabled, container=component_panel,
+                        ))
+                        chirp_taylor_sll = int(sidebar_parameter(
+                            "Taylor sidelobe level (dB)", 20, 100, 30, 1,
+                            f"sar_taylor_sll_{i}", disabled=not enabled,
+                            container=component_panel,
+                        ))
+                    elif chirp_window == "Kaiser":
+                        chirp_kaiser_beta = sidebar_parameter(
+                            "Kaiser beta", 0.0, 20.0, 8.6, 0.1,
+                            f"sar_kaiser_beta_{i}", disabled=not enabled,
+                            container=component_panel,
+                        )
+
+                if enabled:
+                    _, signal_component = generate_signal(
+                        sig_type, freq, amp, duration, fs, phase, chirp_window,
+                        chirp_taylor_nbar, chirp_taylor_sll, chirp_kaiser_beta,
+                    )
+                    combined_signal += signal_component
+                    active_components.append(sig_type)
+                    active_frequencies.append(freq)
 
 with st.sidebar.expander("3. Channel and noise", expanded=False) as channel_panel:
     noise_type = channel_panel.selectbox(
